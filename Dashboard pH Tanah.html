@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Monitoring pH Tanah</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%);
+            min-height: 100vh;
+        }
+        
+        /* Glassmorphism utilities */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+        
+        /* Code block scrollbar */
+        pre::-webkit-scrollbar { width: 6px; height: 6px; }
+        pre::-webkit-scrollbar-track { background: transparent; }
+        pre::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+    </style>
+</head>
+<body class="text-gray-800 antialiased flex flex-col">
+
+    <nav class="glass-panel sticky top-0 z-50 border-b border-white/50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo & Title -->
+                <div class="flex items-center gap-3">
+                    <div class="bg-emerald-500 text-white p-2 rounded-lg shadow-sm">
+                        <i class="fa-solid fa-seedling text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg sm:text-xl text-gray-800 leading-tight">AgroMonitor</h1>
+                        <p class="text-xs text-gray-500 font-medium hidden sm:block">Sistem Cerdas Analisis Tanah</p>
+                    </div>
+                </div>
+                
+                <!-- Connection Status -->
+                <div class="flex items-center gap-2 bg-white/50 border border-white px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium shadow-sm transition-all duration-300" id="conn-badge">
+                    <div id="conn-indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></div>
+                    <span id="conn-text" class="text-gray-600 hidden sm:inline">Menghubungkan...</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column: Key Metrics & Controls (Stacks on top for mobile) -->
+        <div class="flex flex-col gap-6 lg:col-span-4">
+            
+            <!-- Current pH Card -->
+            <div class="glass-panel rounded-2xl p-6 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-lg h-56 transition-transform hover:scale-[1.02] duration-300">
+                <div class="absolute -right-4 -top-4 opacity-5 text-8xl text-emerald-600">
+                    <i class="fa-solid fa-flask"></i>
+                </div>
+                <h2 class="text-gray-500 text-xs sm:text-sm font-bold uppercase tracking-widest mb-3">pH Tanah Saat Ini</h2>
+                <div class="text-6xl sm:text-7xl font-black text-gray-800 tracking-tighter" id="current-ph">--</div>
+                <div class="mt-4 inline-flex items-center gap-1.5 bg-gray-100/80 px-3 py-1 rounded-full border border-gray-200">
+                    <i class="fa-regular fa-clock text-xs text-gray-400"></i>
+                    <p class="text-[11px] sm:text-xs text-gray-500 font-medium" id="last-update">Menunggu sinkronisasi...</p>
+                </div>
+            </div>
+
+            <!-- Soil Status Card -->
+            <div id="status-card" class="glass-panel rounded-2xl p-6 flex items-center gap-5 transition-all duration-500 shadow-md">
+                <div id="status-icon-bg" class="w-16 h-16 rounded-2xl bg-gray-100 flex flex-shrink-0 items-center justify-center text-2xl transition-colors duration-500 shadow-inner">
+                    <i id="status-icon" class="fa-solid fa-circle-notch fa-spin text-gray-400"></i>
+                </div>
+                <div class="flex-grow">
+                    <h2 class="text-gray-500 text-xs font-bold uppercase tracking-widest">Kondisi Tanah</h2>
+                    <div id="status-text" class="text-xl sm:text-2xl font-bold text-gray-700 mt-1 leading-tight">Analisis...</div>
+                    <p id="status-desc" class="text-xs text-gray-500 mt-1">Mengumpulkan data</p>
+                </div>
+            </div>
+
+            <!-- Simulation Controls -->
+            <div class="glass-panel rounded-2xl p-6 shadow-md border-t-4 border-t-emerald-500">
+                <div class="flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-microchip text-emerald-600 text-lg"></i>
+                    <h3 class="text-sm font-bold text-gray-700">Mode Simulasi Perangkat</h3>
+                </div>
+                <p class="text-xs sm:text-sm text-gray-600 mb-5 leading-relaxed">Gunakan fitur ini untuk mensimulasikan pengiriman data sensor jika mikrokontroler (Arduino/ESP) belum terhubung ke sistem.</p>
+                
+                <button id="btn-simulate" class="w-full bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-xl transition-all shadow-md hover:shadow-lg flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <i class="fa-solid fa-play"></i> <span>Mulai Simulasi Data</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Column: Visualization & Integration -->
+        <div class="flex flex-col gap-6 lg:col-span-8">
+            
+            <!-- Chart Card -->
+            <div class="glass-panel rounded-2xl p-4 sm:p-6 shadow-lg flex flex-col h-[350px] sm:h-[400px]">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <div class="bg-blue-100 text-blue-600 p-1.5 rounded-lg">
+                            <i class="fa-solid fa-chart-area"></i>
+                        </div>
+                        <h2 class="text-gray-700 font-bold text-base sm:text-lg">Grafik Historis pH</h2>
+                    </div>
+                    <span class="text-[10px] sm:text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200">15 Data Terakhir</span>
+                </div>
+                <div class="relative flex-grow w-full h-full min-h-0">
+                    <canvas id="phChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Arduino Integration Instruction -->
+            <div class="glass-panel rounded-2xl p-4 sm:p-6 shadow-md flex-grow">
+                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                    <div class="flex items-center gap-2">
+                        <div class="bg-gray-800 text-white p-1.5 rounded-lg">
+                            <i class="fa-solid fa-code"></i>
+                        </div>
+                        <h2 class="text-gray-700 font-bold text-base sm:text-lg">Integrasi Mikrokontroler</h2>
+                    </div>
+                    <button id="btn-copy" class="text-xs bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 py-1.5 px-3 rounded-lg transition-colors shadow-sm flex items-center gap-1.5 w-fit">
+                        <i class="fa-regular fa-copy"></i> Salin Kode
+                    </button>
+                </div>
+                
+                <p class="text-xs sm:text-sm text-gray-600 mb-3 leading-relaxed">
+                    Unggah kode C++ (Arduino IDE) di bawah ini ke ESP8266/ESP32 Anda. Sistem ini menggunakan Firebase API (REST) yang aman dan terstruktur untuk mengirim data langsung ke dashboard ini.
+                </p>
+                
+                <div class="bg-[#1e1e1e] rounded-xl p-4 overflow-x-auto shadow-inner border border-gray-700">
+<pre id="code-snippet" class="text-xs sm:text-sm font-mono leading-relaxed"><span class="text-gray-500">/* 
+ * Membutuhkan Library: "FirebaseClient" oleh mobizt
+ * Board: ESP32 atau ESP8266
+ */</span>
+<span class="text-pink-500">#include</span> <span class="text-green-300">&lt;WiFi.h&gt;</span> <span class="text-gray-500">// Gunakan ESP8266WiFi.h untuk ESP8266</span>
+<span class="text-pink-500">#include</span> <span class="text-green-300">&lt;FirebaseClient.h&gt;</span>
+
+<span class="text-blue-400">const char</span>* WIFI_SSID = <span class="text-yellow-300">"NAMA_WIFI_ANDA"</span>;
+<span class="text-blue-400">const char</span>* WIFI_PASSWORD = <span class="text-yellow-300">"PASSWORD_WIFI"</span>;
+
+<span class="text-gray-500">// Konfigurasi akan menyesuaikan dengan project Anda saat di-deploy</span>
+<span class="text-pink-500">#define</span> PROJECT_ID <span class="text-yellow-300">"ID_PROJECT_FIREBASE"</span> 
+
+<span class="text-blue-400">void</span> <span class="text-yellow-100">setup</span>() {
+  Serial.<span class="text-yellow-100">begin</span>(115200);
+  WiFi.<span class="text-yellow-100">begin</span>(WIFI_SSID, WIFI_PASSWORD);
+  
+  <span class="text-pink-500">while</span> (WiFi.<span class="text-yellow-100">status</span>() != WL_CONNECTED) {
+    <span class="text-yellow-100">delay</span>(500); Serial.<span class="text-yellow-100">print</span>(<span class="text-yellow-300">"."</span>);
+  }
+  Serial.<span class="text-yellow-100">println</span>(<span class="text-yellow-300">"\nTerhubung ke WiFi!"</span>);
+  
+  <span class="text-gray-500">// Inisialisasi pin Sensor pH Analog disini...</span>
+}
+
+<span class="text-blue-400">void</span> <span class="text-yellow-100">loop</span>() {
+  <span class="text-gray-500">// Contoh pembacaan sensor (Ganti dengan analogRead sensor Anda)</span>
+  <span class="text-blue-400">float</span> phValue = 6.8 + (<span class="text-yellow-100">random</span>(-5, 5) / 10.0); 
+  
+  <span class="text-gray-500">// Format payload JSON standar Firestore Google</span>
+  String payload = <span class="text-yellow-300">"{\"fields\": {\"ph\": {\"doubleValue\": "</span> + String(phValue) + <span class="text-yellow-300">"}, \"timestamp\": {\"integerValue\": \""</span> + String(<span class="text-yellow-100">millis</span>()) + <span class="text-yellow-300">"\"}}}"</span>;
+  
+  Serial.<span class="text-yellow-100">println</span>(<span class="text-yellow-300">"Mengirim Data pH: "</span> + String(phValue));
+  
+  <span class="text-gray-500">// -- Tambahkan logika Firebase POST Request disini -- //</span>
+  
+  <span class="text-yellow-100">delay</span>(5000); <span class="text-gray-500">// Kirim data setiap 5 detik</span>
+}</pre>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Environment Variables Handling
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'demo-ph-app-' + Math.floor(Math.random() * 1000);
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        let authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth;
+        let isConnected = false;
+        let simulationInterval = null;
+        let isSimulating = false;
+
+        const elConnBadge = document.getElementById('conn-badge');
+        const elConnIndicator = document.getElementById('conn-indicator');
+        const elConnText = document.getElementById('conn-text');
+        
+        const elCurrentPh = document.getElementById('current-ph');
+        const elLastUpdate = document.getElementById('last-update');
+        
+        const elStatusCard = document.getElementById('status-card');
+        const elStatusIconBg = document.getElementById('status-icon-bg');
+        const elStatusIcon = document.getElementById('status-icon');
+        const elStatusText = document.getElementById('status-text');
+        const elStatusDesc = document.getElementById('status-desc');
+        
+        const btnSimulate = document.getElementById('btn-simulate');
+        const btnSimulateText = btnSimulate.querySelector('span');
+        const btnSimulateIcon = btnSimulate.querySelector('i');
+        const btnCopy = document.getElementById('btn-copy');
+
+        // Config object for Tailwind theme colors
+        const themes = {
+            acidic: { 
+                cardBg: 'bg-red-50/80', border: 'border-red-100',
+                iconWrap: 'bg-red-100 text-red-500 shadow-red-100', icon: 'fa-lemon',
+                title: 'text-red-700', desc: 'Terlalu Asam. Perlu pengapuran (Dolomit).'
+            },
+            neutral: { 
+                cardBg: 'bg-emerald-50/80', border: 'border-emerald-100',
+                iconWrap: 'bg-emerald-100 text-emerald-500 shadow-emerald-100', icon: 'fa-check-circle',
+                title: 'text-emerald-700', desc: 'Kondisi Ideal untuk mayoritas tanaman.'
+            },
+            alkaline: { 
+                cardBg: 'bg-blue-50/80', border: 'border-blue-100',
+                iconWrap: 'bg-blue-100 text-blue-500 shadow-blue-100', icon: 'fa-droplet',
+                title: 'text-blue-700', desc: 'Terlalu Basa. Perlu sulfur/belerang.'
+            },
+            unknown: {
+                cardBg: 'bg-gray-50/80', border: 'border-gray-100',
+                iconWrap: 'bg-gray-200 text-gray-500 shadow-gray-100', icon: 'fa-question-circle',
+                title: 'text-gray-700', desc: 'Menunggu data masuk...'
+            }
+        };
+
+        const ctx = document.getElementById('phChart').getContext('2d');
+        
+        // Setup responsive gradient for chart
+        const gradient = ctx.createLinearGradient(0, 0, 0, 350);
+        gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)'); // Emerald 500 w/ opacity
+        gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+        const phChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Nilai pH',
+                    data: [],
+                    borderColor: '#10b981', // Emerald
+                    backgroundColor: gradient,
+                    borderWidth: 3,
+                    pointBackgroundColor: '#ffffff',
+                    pointBorderColor: '#10b981',
+                    pointBorderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 6,
+                    fill: true,
+                    tension: 0.3 // Smooth curves
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(17, 24, 39, 0.9)',
+                        titleFont: { family: 'Inter', size: 13 },
+                        bodyFont: { family: 'Inter', size: 14, weight: 'bold' },
+                        padding: 12,
+                        cornerRadius: 8,
+                        displayColors: false,
+                        callbacks: {
+                            label: function(context) {
+                                return 'pH: ' + context.parsed.y.toFixed(2);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        min: 3, max: 10, // Adjusted scale for better view of 4-9 range
+                        grid: { color: 'rgba(0,0,0,0.05)', drawBorder: false },
+                        ticks: { color: '#6b7280', font: { family: 'Inter', size: 11 }, stepSize: 1 }
+                    },
+                    x: {
+                        grid: { display: false, drawBorder: false },
+                        ticks: { 
+                            color: '#6b7280', 
+                            font: { family: 'Inter', size: 10 },
+                            maxTicksLimit: window.innerWidth < 640 ? 5 : 10 // Fewer ticks on mobile
+                        }
+                    }
+                },
+                interaction: { intersect: false, mode: 'index' },
+                animation: { duration: 500 }
+            }
+        });
+
+        // Resize chart on window resize for better mobile experience
+        window.addEventListener('resize', () => {
+            if(phChart) {
+                phChart.options.scales.x.ticks.maxTicksLimit = window.innerWidth < 640 ? 5 : 10;
+                phChart.update('none');
+            }
+        });
+
+        function updateStatusUI(ph) {
+            if (ph === null) {
+                applyTheme('unknown', 'Tidak Diketahui');
+                return;
+            }
+
+            if (ph < 6.5) {
+                applyTheme('acidic', 'Asam (Acidic)');
+            } else if (ph >= 6.5 && ph <= 7.5) {
+                applyTheme('neutral', 'Netral (Ideal)');
+            } else {
+                applyTheme('alkaline', 'Basa (Alkaline)');
+            }
+        }
+
+        function applyTheme(themeKey, textTitle) {
+            const t = themes[themeKey];
+            
+            // Remove old classes and apply new ones for the Card
+            elStatusCard.className = `glass-panel rounded-2xl p-6 flex items-center gap-5 transition-all duration-500 shadow-md border ${t.border} ${t.cardBg}`;
+            
+            // Apply icon wrapper classes
+            elStatusIconBg.className = `w-16 h-16 rounded-2xl flex flex-shrink-0 items-center justify-center text-2xl transition-colors duration-500 shadow-inner ${t.iconWrap}`;
+            
+            // Apply icon
+            elStatusIcon.className = `fa-solid ${t.icon}`;
+            
+            // Apply text classes
+            elStatusText.className = `text-xl sm:text-2xl font-bold mt-1 leading-tight ${t.title}`;
+            elStatusText.innerText = textTitle;
+            elStatusDesc.innerText = t.desc;
+        }
+
+        function formatTimeShort(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        // Copy button functionality
+        btnCopy.addEventListener('click', () => {
+            const code = document.getElementById('code-snippet').innerText;
+            const originalHTML = btnCopy.innerHTML;
+            
+            try {
+                // Try modern clipboard API first
+                navigator.clipboard.writeText(code).then(() => {
+                    showCopySuccess(originalHTML);
+                }).catch(() => fallbackCopy(code, originalHTML));
+            } catch (err) {
+                // Fallback for older browsers or iframe restrictions
+                fallbackCopy(code, originalHTML);
+            }
+        });
+
+        function fallbackCopy(code, originalHTML) {
+            const textArea = document.createElement("textarea");
+            textArea.value = code;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-999999px";
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showCopySuccess(originalHTML);
+            } catch (err) {
+                console.error('Gagal menyalin text', err);
+            }
+            document.body.removeChild(textArea);
+        }
+
+        function showCopySuccess(originalHTML) {
+            btnCopy.innerHTML = '<i class="fa-solid fa-check text-emerald-600"></i> <span class="text-emerald-700">Tersalin!</span>';
+            btnCopy.classList.replace('bg-white', 'bg-emerald-50');
+            btnCopy.classList.replace('border-gray-200', 'border-emerald-200');
+            setTimeout(() => { 
+                btnCopy.innerHTML = originalHTML; 
+                btnCopy.classList.replace('bg-emerald-50', 'bg-white');
+                btnCopy.classList.replace('border-emerald-200', 'border-gray-200');
+            }, 2500);
+        }
+
+        async function initFirebase() {
+            if (!firebaseConfig) {
+                setConnectionStatus(false, "Sistem Offline (Mode Demo)");
+                // Activate simulation button anyway for demo purposes
+                btnSimulate.disabled = false;
+                return;
+            }
+
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Sesuai aturan: Otentikasi harus dilakukan SEBELUM query Firestore
+                if (authToken) {
+                    await signInWithCustomToken(auth, authToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                if (auth.currentUser) {
+                    setConnectionStatus(true, "Terhubung ke Server");
+                    btnSimulate.disabled = false;
+                    listenToData();
+                } else {
+                    setConnectionStatus(false, "Gagal Autentikasi");
+                }
+
+            } catch (error) {
+                console.error("Firebase Init Error:", error);
+                setConnectionStatus(false, "Koneksi Terputus");
+            }
+        }
+
+        function setConnectionStatus(connected, text) {
+            isConnected = connected;
+            elConnText.innerText = text;
+            elConnText.classList.remove('hidden');
+            
+            if (connected) {
+                elConnBadge.classList.replace('bg-white/50', 'bg-emerald-50/90');
+                elConnBadge.classList.replace('border-white', 'border-emerald-200');
+                elConnIndicator.classList.remove('bg-red-500', 'animate-pulse');
+                elConnIndicator.classList.add('bg-emerald-500');
+            } else {
+                elConnBadge.classList.replace('bg-emerald-50/90', 'bg-white/50');
+                elConnBadge.classList.replace('border-emerald-200', 'border-white');
+                elConnIndicator.classList.remove('bg-emerald-500');
+                elConnIndicator.classList.add('bg-red-500', 'animate-pulse');
+            }
+        }
+
+        function listenToData() {
+            if (!auth.currentUser) return; // Guard operation
+
+            // PATH WAJIB: /artifacts/{appId}/public/data/{collectionName}
+            const dataRef = collection(db, 'artifacts', appId, 'public', 'data', 'ph_history');
+            
+            // WAJIB: Tanpa complex query (orderBy, limit) karena butuh index. Ambil semua, filter di klien.
+            onSnapshot(dataRef, (snapshot) => {
+                let records = [];
+                snapshot.forEach((doc) => {
+                    records.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Urutkan di memory berdasarkan timestamp
+                records.sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Ambil 15 data terakhir untuk chart
+                const recentRecords = records.slice(-15);
+
+                updateDashboard(recentRecords);
+
+            }, (error) => {
+                console.error("Error mengambil data:", error);
+                setConnectionStatus(false, "Sinkronisasi Gagal");
+            });
+        }
+
+        function updateDashboard(records) {
+            if (records.length === 0) return;
+
+            const labels = [];
+            const data = [];
+            
+            records.forEach(rec => {
+                // Ensure field exists before plotting
+                if(rec.ph !== undefined && rec.timestamp !== undefined) {
+                    labels.push(formatTimeShort(rec.timestamp));
+                    data.push(rec.ph);
+                }
+            });
+
+            // Perbarui Chart.js
+            phChart.data.labels = labels;
+            phChart.data.datasets[0].data = data;
+            phChart.update();
+
+            // Perbarui UI Metrik Utama
+            const latestRecord = records[records.length - 1];
+            if (latestRecord && latestRecord.ph !== undefined) {
+                const phValue = parseFloat(latestRecord.ph);
+                
+                // Animasi angka
+                elCurrentPh.innerText = phValue.toFixed(2);
+                elLastUpdate.innerText = "Terakhir: " + formatTimeShort(latestRecord.timestamp);
+                
+                updateStatusUI(phValue);
+            }
+        }
+
+        btnSimulate.addEventListener('click', async () => {
+            // Jika dalam mode tanpa config firebase (lokal demo)
+            if (!db && isConnected === false) {
+                startLocalDemo();
+                return;
+            }
+
+            if (!isConnected || !db) return;
+
+            if (isSimulating) {
+                // Matikan Simulasi
+                clearInterval(simulationInterval);
+                isSimulating = false;
+                
+                // Ubah gaya tombol kembali normal
+                btnSimulate.classList.replace('bg-red-500', 'bg-emerald-500');
+                btnSimulate.classList.replace('hover:bg-red-600', 'hover:bg-emerald-600');
+                btnSimulate.classList.replace('active:bg-red-700', 'active:bg-emerald-700');
+                btnSimulateIcon.className = 'fa-solid fa-play';
+                btnSimulateText.innerText = 'Mulai Simulasi Data';
+            } else {
+                // Mulai Simulasi
+                isSimulating = true;
+                
+                // Ubah gaya tombol menjadi gaya "Berhenti"
+                btnSimulate.classList.replace('bg-emerald-500', 'bg-red-500');
+                btnSimulate.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600');
+                btnSimulate.classList.replace('active:bg-emerald-700', 'active:bg-red-700');
+                btnSimulateIcon.className = 'fa-solid fa-stop';
+                btnSimulateText.innerText = 'Hentikan Simulasi';
+                
+                // Inisialisasi nilai acak yang realistis (sekitar Netral)
+                let currentSimPh = 6.5 + (Math.random() * 1.0 - 0.5); 
+                
+                // Eksekusi segera lalu ulangi tiap 3 detik
+                const pushData = async () => {
+                    if (!auth.currentUser) return;
+                    
+                    // Buat pergerakan grafik terlihat organik (Naik turun sedikit)
+                    currentSimPh += (Math.random() * 0.8) - 0.4;
+                    
+                    // Batasi sesuai request (4.0 hingga 9.0)
+                    if(currentSimPh < 4.0) currentSimPh = 4.0 + Math.random();
+                    if(currentSimPh > 9.0) currentSimPh = 9.0 - Math.random();
+
+                    const phRef = collection(db, 'artifacts', appId, 'public', 'data', 'ph_history');
+                    try {
+                        await addDoc(phRef, {
+                            ph: parseFloat(currentSimPh.toFixed(2)),
+                            timestamp: Date.now()
+                        });
+                    } catch (e) {
+                        console.error("Gagal mengirim data simulasi: ", e);
+                    }
+                };
+                
+                pushData(); // Push pertama
+                simulationInterval = setInterval(pushData, 3000); // Set interval 3 detik
+            }
+        });
+
+        // Mode Demo Lokal jika Firestore tidak dikonfigurasi oleh platform (Fallback)
+        function startLocalDemo() {
+            if (isSimulating) {
+                clearInterval(simulationInterval);
+                isSimulating = false;
+                btnSimulate.classList.replace('bg-red-500', 'bg-emerald-500');
+                btnSimulate.classList.replace('hover:bg-red-600', 'hover:bg-emerald-600');
+                btnSimulateIcon.className = 'fa-solid fa-play';
+                btnSimulateText.innerText = 'Mulai Simulasi Lokal';
+            } else {
+                isSimulating = true;
+                btnSimulate.classList.replace('bg-emerald-500', 'bg-red-500');
+                btnSimulate.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600');
+                btnSimulateIcon.className = 'fa-solid fa-stop';
+                btnSimulateText.innerText = 'Hentikan Simulasi Lokal';
+                
+                let localRecords = [];
+                let currentSimPh = 6.8;
+
+                simulationInterval = setInterval(() => {
+                    currentSimPh += (Math.random() * 0.8) - 0.4;
+                    if(currentSimPh < 4.0) currentSimPh = 4.5;
+                    if(currentSimPh > 9.0) currentSimPh = 8.5;
+
+                    localRecords.push({
+                        ph: parseFloat(currentSimPh.toFixed(2)),
+                        timestamp: Date.now()
+                    });
+
+                    if(localRecords.length > 15) localRecords.shift();
+                    updateDashboard(localRecords);
+                }, 3000);
+            }
+        }
+
+        // Jalankan inisialisasi saat web dimuat
+        window.addEventListener('DOMContentLoaded', () => {
+            updateStatusUI(null); // Set tampilan ke mode menunggu
+            initFirebase();
+        });
+
+    </script>
+</body>
+</html>
